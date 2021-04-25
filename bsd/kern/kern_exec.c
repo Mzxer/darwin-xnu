@@ -1129,7 +1129,8 @@ grade:
 		    (imgp->ip_flags & IMGPF_IS_64BIT_ADDR),
 		    (imgp->ip_flags & IMGPF_IS_64BIT_DATA),
 		    FALSE);
-		/* task and thread ref returned, will be released in __mac_execve */
+		/* task and thread ref returned, will be released in 
+		*/
 		if (imgp->ip_new_thread == NULL) {
 			error = ENOMEM;
 			goto bad;
@@ -4482,6 +4483,9 @@ execve(proc_t p, struct execve_args *uap, int32_t *retval)
  *
  * TODO:	Dynamic linker header address on stack is copied via suword()
  */
+/*
+   xnu 加载入口，加载 mach-o 文件。
+ */
 int
 __mac_execve(proc_t p, struct __mac_execve_args *uap, int32_t *retval)
 {
@@ -4493,7 +4497,7 @@ __mac_execve(proc_t p, struct __mac_execve_args *uap, int32_t *retval)
 	int is_64 = IS_64BIT_PROCESS(p);
 	struct vfs_context context;
 	struct uthread  *uthread;
-	task_t old_task = current_task();
+	task_t old_task = current_task(); //原来的进程。
 	task_t new_task = NULL;
 	boolean_t should_release_proc_ref = FALSE;
 	boolean_t exec_done = FALSE;
@@ -4506,6 +4510,7 @@ __mac_execve(proc_t p, struct __mac_execve_args *uap, int32_t *retval)
 	/* Allocate a big chunk for locals instead of using stack since these
 	 * structures a pretty big.
 	 */
+	// 分配大块内存，不用堆栈是因为 Mach-O 结构很大。
 	MALLOC(bufp, char *, (sizeof(*imgp) + sizeof(*vap) + sizeof(*origvap)), M_TEMP, M_WAITOK | M_ZERO);
 	imgp = (struct image_params *) bufp;
 	if (bufp == NULL) {
@@ -4570,6 +4575,7 @@ __mac_execve(proc_t p, struct __mac_execve_args *uap, int32_t *retval)
 		 * During exec any transition from new_task -> proc is fine, but don't allow
 		 * transition from proc->task, since it will modify old_task.
 		 */
+		//创建新的进程
 		imgp->ip_new_thread = fork_create_child(old_task,
 		    NULL,
 		    p,
@@ -4588,7 +4594,7 @@ __mac_execve(proc_t p, struct __mac_execve_args *uap, int32_t *retval)
 	}
 
 	imgp->ip_subsystem_root_path = p->p_subsystem_root_path;
-
+	//解析加载 mach-o 文件。
 	error = exec_activate_image(imgp);
 	/* thread and task ref returned for vfexec case */
 
@@ -4684,9 +4690,9 @@ __mac_execve(proc_t p, struct __mac_execve_args *uap, int32_t *retval)
 		if (!in_vfexec) {
 			proc_inherit_task_role(new_task, old_task);
 		}
-
+	        
 		thread_t main_thread = imgp->ip_new_thread;
-
+		//设置进程主线程
 		task_set_main_thread_qos(new_task, main_thread);
 
 #if __has_feature(ptrauth_calls)
